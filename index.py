@@ -20,8 +20,8 @@ GROUP_LINK = os.environ.get('GROUP_LINK', 'https://vk.com/club238286097')
 REMINDERS_FILE = "reminders.json"
 FEEDBACK_FILE = "feedback.json"
 
-# Устанавливаем часовой пояс (Москва)
-TIMEZONE = pytz.timezone('Europe/Moscow')
+# Часовой пояс (Москва)
+TIMEZONE = pytz.timezone('Asia/Novosibirsk')
 
 
 class ReminderBot:
@@ -38,31 +38,11 @@ class ReminderBot:
         self.running = True
         self.reconnect_attempts = 0
         self.init_vk_session()
-        self.show_startup_message()
+        print("✅ Бот успешно запущен!")
 
     def get_now(self):
         """Получить текущее время в московском часовом поясе"""
         return datetime.now(TIMEZONE)
-
-    def show_startup_message(self):
-        """Показать сообщение при запуске бота"""
-        now = self.get_now()
-        print("\n" + "=" * 60)
-        print("🤖 БОТ-НАПОМИНАЛКА ЗАПУЩЕН")
-        print("=" * 60)
-        print("📌 Версия: 2.2")
-        print("🕐 Время запуска (МСК): " + now.strftime("%d.%m.%Y %H:%M:%S"))
-        print("=" * 60)
-        print("\n⚠️ ИЗВИНЕНИЕ И УВЕДОМЛЕНИЕ:")
-        print("-" * 60)
-        print("Уважаемые пользователи, приносим извинения за возможные")
-        print("неудобства в работе бота. Мы постоянно работаем над")
-        print("улучшением его функционала.")
-        print("\n🔧 Последние изменения:")
-        print("• Исправлен часовой пояс (Москва)")
-        print("• Исправлено определение времени (сегодня/завтра)")
-        print("• Добавлено красивое приветствие")
-        print("=" * 60 + "\n")
 
     def init_vk_session(self):
         try:
@@ -275,16 +255,18 @@ class ReminderBot:
         keyboard.add_button("➕ Новое напоминание", color=VkKeyboardColor.POSITIVE)
         keyboard.add_button("📋 Список", color=VkKeyboardColor.PRIMARY)
         keyboard.add_line()
-        keyboard.add_button("❌ Отменить напоминание", color=VkKeyboardColor.NEGATIVE)
+        keyboard.add_button("❓ Помощь", color=VkKeyboardColor.SECONDARY)
         keyboard.add_button("✍️ Обращение к админу", color=VkKeyboardColor.SECONDARY)
         keyboard.add_line()
         keyboard.add_button("📢 Подписаться", color=VkKeyboardColor.SECONDARY)
+        keyboard.add_button("📰 Новости", color=VkKeyboardColor.PRIMARY)
         return keyboard
 
     def get_subscribe_keyboard(self):
         keyboard = VkKeyboard(one_time=False)
-        keyboard.add_openlink_button("🔔 Подписаться на сообщество", GROUP_LINK)
-        keyboard.add_button("🔙 Назад", color=VkKeyboardColor.PRIMARY)
+        keyboard.add_openlink_button("🔔 Перейти в сообщество", GROUP_LINK)
+        keyboard.add_button("📰 Новости", color=VkKeyboardColor.PRIMARY)
+        keyboard.add_button("🔙 Главное меню", color=VkKeyboardColor.SECONDARY)
         return keyboard
 
     def get_cancel_keyboard(self):
@@ -292,12 +274,24 @@ class ReminderBot:
         keyboard.add_button("❌ Отмена", color=VkKeyboardColor.NEGATIVE)
         return keyboard
 
+    def get_list_with_delete_keyboard(self, reminders):
+        keyboard = VkKeyboard(one_time=False)
+
+        for r in reminders[:8]:
+            keyboard.add_button(f"🗑 Удалить #{r['id']}", color=VkKeyboardColor.NEGATIVE)
+
+        keyboard.add_line()
+        keyboard.add_button("🔙 Назад", color=VkKeyboardColor.PRIMARY)
+        keyboard.add_button("➕ Новое", color=VkKeyboardColor.POSITIVE)
+
+        return keyboard
+
     def run(self):
         self.check_thread = threading.Thread(target=self.check_reminders, daemon=True)
         self.check_thread.start()
 
         print("✅ Бот готов к работе! Ожидание сообщений...")
-        print(f"📍 Текущее время (МСК): {self.get_now().strftime('%d.%m.%Y %H:%M:%S')}")
+        print(f"📍 Текущее время: {self.get_now().strftime('%d.%m.%Y %H:%M:%S')}")
 
         while self.running:
             try:
@@ -317,7 +311,8 @@ class ReminderBot:
                         text = msg['text'].strip()
                         print(f"📨 {user_id}: {text}")
 
-                        # Кнопки
+                        # ========== ОБРАБОТКА КНОПОК ==========
+
                         if text == "➕ Новое напоминание":
                             self.user_states[user_id] = {'step': 'awaiting_datetime'}
                             self.send_message(user_id,
@@ -325,31 +320,107 @@ class ReminderBot:
                                               "• 19:00 (сегодня в 19:00)\n"
                                               "• завтра в 10:00\n"
                                               "• 3 мая в 19:00\n\n"
-                                              "Если время уже прошло сегодня, напомню завтра!",
-                                              self.get_main_keyboard())
+                                              "Если время уже прошло сегодня, напомню завтра!\n\n"
+                                              "❌ Если передумали, нажмите Отмена",
+                                              self.get_cancel_keyboard())
                             continue
 
                         elif text == "📋 Список":
                             reminders = self.get_user_reminders(user_id)
                             if not reminders:
-                                self.send_message(user_id, "📭 У вас нет активных напоминаний.",
+                                self.send_message(user_id,
+                                                  "📭 У вас нет активных напоминаний.\n\nЧтобы создать новое, нажмите ➕ Новое напоминание",
                                                   self.get_main_keyboard())
                             else:
-                                msg_text = "📋 Ваши напоминания:\n\n"
+                                msg_text = "📋 ВАШИ НАПОМИНАНИЯ:\n\n"
                                 for r in reminders:
-                                    msg_text += f"🔹 #{r['id']} {r['date']} в {r['time']} — {r['text']}\n"
-                                self.send_message(user_id, msg_text, self.get_main_keyboard())
+                                    msg_text += f"🔹 #{r['id']} | {r['date']} в {r['time']}\n   📝 {r['text']}\n\n"
+                                msg_text += "Чтобы удалить, нажмите на кнопку с номером напоминания 👇"
+                                self.send_message(user_id, msg_text, self.get_list_with_delete_keyboard(reminders))
                             continue
 
-                        elif text == "❌ Отменить напоминание":
-                            self.user_states[user_id] = {'step': 'awaiting_delete_id'}
-                            self.send_message(user_id, "🗑 Введите ID напоминания:", self.get_main_keyboard())
+                        if text.startswith("🗑 Удалить #"):
+                            try:
+                                reminder_id = int(text.split("#")[1])
+                                if self.delete_reminder(user_id, reminder_id):
+                                    self.send_message(user_id, f"✅ Напоминание #{reminder_id} успешно удалено!",
+                                                      self.get_main_keyboard())
+                                else:
+                                    self.send_message(user_id, f"❌ Напоминание #{reminder_id} не найдено",
+                                                      self.get_main_keyboard())
+                            except:
+                                self.send_message(user_id, "❌ Ошибка при удалении", self.get_main_keyboard())
+                            continue
+
+                        elif text == "❓ Помощь":
+                            help_message = (
+                                "❓ **ИНСТРУКЦИЯ ПО ИСПОЛЬЗОВАНИЮ БОТА**\n\n"
+                                "📌 **Что умеет бот:**\n"
+                                "• Создавать напоминания с датой и временем\n"
+                                "• Присылать уведомления в нужное время\n"
+                                "• Показывать список ваших напоминаний\n"
+                                "• Удалять ненужные напоминания\n"
+                                "• Принимать обращения к администратору\n\n"
+                                "📅 **Форматы даты и времени:**\n"
+                                "• `19:00` — сегодня в 19:00\n"
+                                "• `завтра в 10:00` — завтра в 10 утра\n"
+                                "• `3 мая в 19:00` — 3 мая в 19:00\n\n"
+                                "⏰ **Важно:** Все даты и время в **Московском времени (МСК)**\n"
+                                "Если время уже прошло сегодня, напомню завтра!\n\n"
+                                "🔹 **Кнопки меню:**\n"
+                                "• ➕ Новое напоминание — создать новое\n"
+                                "• 📋 Список — посмотреть и удалить напоминания\n"
+                                "• ✍️ Обращение к админу — написать разработчику\n"
+                                "• 📢 Подписаться — быть в курсе обновлений\n"
+                                "• 📰 Новости — узнать о последних обновлениях\n\n"
+                                "💡 **Совет:** Используйте кнопки меню для удобного управления!\n\n"
+                                "❓ Если остались вопросы — напишите обращение к админу."
+                            )
+                            self.send_message(user_id, help_message, self.get_main_keyboard())
                             continue
 
                         elif text == "✍️ Обращение к админу":
                             self.user_states[user_id] = {'step': 'awaiting_feedback'}
-                            self.send_message(user_id, "✍️ Напишите ваше обращение, жалобу или пожелание:",
+                            self.send_message(user_id,
+                                              "✍️ Напишите ваше обращение, жалобу или пожелание.\n\n"
+                                              "Я передам его администратору.\n\n"
+                                              "❌ Если передумали, нажмите Отмена",
                                               self.get_cancel_keyboard())
+                            continue
+
+                        elif text == "📢 Подписаться":
+                            self.send_message(user_id,
+                                              "🔔 Подпишитесь на наше сообщество, чтобы быть в курсе всех обновлений!\n\n"
+                                              "Нажмите на кнопку ниже 👇",
+                                              self.get_subscribe_keyboard())
+                            continue
+
+                        elif text == "📰 Новости":
+                            news_message = (
+                                "📰 **ПОСЛЕДНИЕ НОВОСТИ БОТА**\n\n"
+                                "🔹 **Версия 1.3**\n"
+                                "• Исправлена работа с часовыми поясами\n"
+                                "• Добавлено удобное удаление напоминаний из списка\n"
+                                "• Кнопка отмены при создании напоминания\n"
+                                "• Улучшена стабильность работы\n\n"
+                                "🔹 **Ближайшие планы:**\n"
+                                "• Повторяющиеся напоминания\n"
+                                "• Ежедневный отчёт по делам\n\n"
+                                "🔹 **По всем вопросам:**\n"
+                                "• Через кнопку ✍️ Обращение к админу\n\n"
+                                "Спасибо, что пользуетесь ботом! 🎉"
+                            )
+                            self.send_message(user_id, news_message, self.get_main_keyboard())
+                            continue
+
+                        elif text == "🔙 Назад":
+                            if user_id in self.user_states:
+                                del self.user_states[user_id]
+                            self.send_message(user_id, "Главное меню:", self.get_main_keyboard())
+                            continue
+
+                        elif text == "🔙 Главное меню":
+                            self.send_message(user_id, "Главное меню:", self.get_main_keyboard())
                             continue
 
                         elif text == "❌ Отмена":
@@ -358,16 +429,7 @@ class ReminderBot:
                             self.send_message(user_id, "✅ Действие отменено", self.get_main_keyboard())
                             continue
 
-                        elif text == "📢 Подписаться":
-                            self.send_message(user_id, "🔔 Подпишитесь на наши обновления! 👇",
-                                              self.get_subscribe_keyboard())
-                            continue
-
-                        elif text == "🔙 Назад":
-                            self.send_message(user_id, "Главное меню:", self.get_main_keyboard())
-                            continue
-
-                        # Состояния диалога
+                        # ========== ОБРАБОТКА СОСТОЯНИЙ ДИАЛОГА ==========
                         if user_id in self.user_states:
                             state = self.user_states[user_id]
 
@@ -377,17 +439,17 @@ class ReminderBot:
                                     self.user_states[user_id]['datetime'] = target_datetime
                                     self.user_states[user_id]['step'] = 'awaiting_text'
                                     self.send_message(user_id,
-                                                      f"✅ {target_datetime.strftime('%d.%m.%Y в %H:%M')}\n\n✏️ Теперь напишите текст напоминания:",
-                                                      self.get_main_keyboard())
+                                                      f"✅ {target_datetime.strftime('%d.%m.%Y в %H:%M')}\n\n✏️ Теперь напишите текст напоминания:\n\n❌ Если передумали, нажмите Отмена",
+                                                      self.get_cancel_keyboard())
                                 else:
                                     self.send_message(user_id,
-                                                      "❌ Не понял дату и время.\n\nПримеры:\n• 19:00\n• завтра в 10:00\n• 3 мая в 19:00",
-                                                      self.get_main_keyboard())
+                                                      "❌ Не понял дату и время.\n\nПримеры:\n• 19:00\n• завтра в 10:00\n• 3 мая в 19:00\n\n❌ Отмена - отменить создание",
+                                                      self.get_cancel_keyboard())
 
                             elif state['step'] == 'awaiting_text':
                                 reminder = self.add_reminder(user_id, state['datetime'], text)
                                 self.send_message(user_id,
-                                                  f"✅ Напоминание создано!\n\n"
+                                                  f"✅ НАПОМИНАНИЕ СОЗДАНО!\n\n"
                                                   f"📅 {reminder['date']} в {reminder['time']}\n"
                                                   f"📝 {text}\n\n"
                                                   f"🔔 Я пришлю уведомление в указанное время!",
@@ -397,62 +459,50 @@ class ReminderBot:
                             elif state['step'] == 'awaiting_feedback':
                                 feedback = self.add_feedback(user_id, text)
                                 self.send_message(user_id,
-                                                  f"✅ Ваше обращение принято!\n\n"
+                                                  f"✅ ОБРАЩЕНИЕ ПРИНЯТО!\n\n"
                                                   f"🆔 Номер: #{feedback['id']}\n"
                                                   f"📅 {feedback['created_at']} (МСК)\n\n"
                                                   f"Спасибо! Мы рассмотрим его в ближайшее время.",
                                                   self.get_main_keyboard())
                                 del self.user_states[user_id]
-
-                            elif state['step'] == 'awaiting_delete_id':
-                                try:
-                                    reminder_id = int(text)
-                                    if self.delete_reminder(user_id, reminder_id):
-                                        self.send_message(user_id, f"✅ Напоминание #{reminder_id} отменено!",
-                                                          self.get_main_keyboard())
-                                    else:
-                                        self.send_message(user_id, f"❌ Напоминание #{reminder_id} не найдено",
-                                                          self.get_main_keyboard())
-                                except:
-                                    self.send_message(user_id, "❌ Введите ID (только число)", self.get_main_keyboard())
-                                del self.user_states[user_id]
                             continue
 
-                        # Спасибо
-                        if any(word in text.lower() for word in ["спасибо", "благодарю", "спс", "пасиб"]):
-                            thanks = ["🤗 Пожалуйста! Всегда рад помочь!", "😊 Обращайся!", "👍 Рад помочь!"]
-                            self.send_message(user_id, random.choice(thanks), self.get_main_keyboard())
+                        # ========== ОБРАБОТКА ПРОСТЫХ КОМАНД ==========
 
-                        # Приветствие
+                        # Спасибо (расширенный список)
+                        if any(word in text.lower() for word in
+                               ["спасибо", "благодарю", "спс", "пасиб", "thanks", "thank you", "благодарствую",
+                                "мерси"]):
+                            thanks_list = [
+                                "🤗 Пожалуйста! Всегда рад помочь!",
+                                "😊 Обращайся, если нужны будут ещё напоминания!",
+                                "👍 Рад, что смог помочь! Хорошего дня!",
+                                "💫 Спасибо за доверие! Напомню вовремя;)",
+                                "🌟 Всегда к вашим услугам!",
+                                "💖 Пожалуйста! Рад быть полезным!",
+                                "🎯 Без проблем! Обращайтесь ещё!",
+                                "🤝 Всегда пожалуйста! Удачи в делах!",
+                                "🌸 Спасибо за приятные слова!",
+                                "✨ Рад стараться для вас!",
+                                "💪 Всегда на связи с вашими делами!",
+                                "🎉 Спасибо! Вы делаете мой день лучше!"
+                            ]
+                            self.send_message(user_id, random.choice(thanks_list), self.get_main_keyboard())
+
+                        # Приветствие (краткое, с версией)
                         elif any(word in text.lower() for word in
-                                 ["привет", "начать", "старт", "здравствуй", "добрый день"]):
+                                 ["привет", "начать", "старт", "здравствуй", "добрый день", "здравствуйте"]):
                             self.send_message(user_id,
-                                              "👋 Привет! Я бот-напоминалка!\n\n"
-                                              "📌 **Что я умею:**\n"
-                                              "• Создавать напоминания с датой и временем\n"
-                                              "• Присылать уведомления в нужное время\n"
-                                              "• Показывать список ваших напоминаний\n"
-                                              "• Отменять ненужные напоминания\n"
-                                              "• Принимать обращения к администратору\n\n"
-                                              "📅 **Форматы даты и времени:**\n"
-                                              "• `19:00` — сегодня в 19:00\n"
-                                              "• `завтра в 10:00` — завтра в 10 утра\n"
-                                              "• `3 мая в 19:00` — 3 мая в 19:00\n\n"
-                                              "⏰ **Важно:** Все даты и время в **Московском времени (МСК)**\n\n"
-                                              "🔹 **Чтобы начать, нажмите:**\n"
-                                              "   ➕ Новое напоминание\n\n"
-                                              "🔹 **Другие кнопки:**\n"
-                                              "   📋 Список — посмотреть все напоминания\n"
-                                              "   ❌ Отменить — удалить напоминание по ID\n"
-                                              "   ✍️ Обращение к админу — написать разработчику\n"
-                                              "   📢 Подписаться — быть в курсе обновлений",
+                                              "👋 Привет! Я бот-напоминалка v2.3\n\n"
+                                              "📌 Нажмите ❓ Помощь, чтобы узнать, как я работаю!\n\n"
+                                              "🔹 Или просто нажмите ➕ Новое напоминание, чтобы начать",
                                               self.get_main_keyboard())
 
                         else:
                             self.send_message(user_id,
                                               "❓ Я не понял команду.\n\n"
-                                              "Используйте кнопки меню 👇\n"
-                                              "Или напишите «привет» для подробной инструкции.",
+                                              "Нажмите ❓ Помощь для инструкции\n"
+                                              "Или используйте кнопки меню 👇",
                                               self.get_main_keyboard())
 
             except Exception as e:
