@@ -13,7 +13,7 @@ import sys
 
 TOKEN = os.environ.get('TOKEN')
 GROUP_ID = int(os.environ.get('GROUP_ID', 238286097))
-ADMIN_ID = int(os.environ.get('ADMIN_ID', 238286097))
+ADMIN_ID = int(os.environ.get('ADMIN_ID', 540139562))
 GROUP_LINK = os.environ.get('GROUP_LINK', 'https://vk.com/club238286097')
 
 REMINDERS_FILE = "reminders.json"
