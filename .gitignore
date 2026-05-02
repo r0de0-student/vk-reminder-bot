@@ -1,0 +1,7 @@
+*.pyc
+__pycache__/
+reminders.json
+feedback.json
+venv/
+.env
+.DS_Store
