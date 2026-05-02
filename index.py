@@ -4,6 +4,7 @@ import time
 import random
 import os
 from datetime import datetime, timedelta
+import pytz
 from vk_api import VkApi
 from vk_api.bot_longpoll import VkBotLongPoll, VkBotEventType
 from vk_api.utils import get_random_id
@@ -19,10 +20,8 @@ GROUP_LINK = os.environ.get('GROUP_LINK', 'https://vk.com/club238286097')
 REMINDERS_FILE = "reminders.json"
 FEEDBACK_FILE = "feedback.json"
 
-# Список запрещённых слов (только для явно неправильных форматов)
-FORBIDDEN_WORDS = [
-    'через', 'час', 'минут', 'секунд', 'полчаса', 'полтора'
-]
+# Устанавливаем часовой пояс (Москва)
+TIMEZONE = pytz.timezone('Europe/Moscow')
 
 
 class ReminderBot:
@@ -41,13 +40,18 @@ class ReminderBot:
         self.init_vk_session()
         self.show_startup_message()
 
+    def get_now(self):
+        """Получить текущее время в московском часовом поясе"""
+        return datetime.now(TIMEZONE)
+
     def show_startup_message(self):
         """Показать сообщение при запуске бота"""
+        now = self.get_now()
         print("\n" + "=" * 60)
         print("🤖 БОТ-НАПОМИНАЛКА ЗАПУЩЕН")
         print("=" * 60)
         print("📌 Версия: 2.2")
-        print("🕐 Время запуска: " + datetime.now().strftime("%d.%m.%Y %H:%M:%S"))
+        print("🕐 Время запуска (МСК): " + now.strftime("%d.%m.%Y %H:%M:%S"))
         print("=" * 60)
         print("\n⚠️ ИЗВИНЕНИЕ И УВЕДОМЛЕНИЕ:")
         print("-" * 60)
@@ -55,9 +59,9 @@ class ReminderBot:
         print("неудобства в работе бота. Мы постоянно работаем над")
         print("улучшением его функционала.")
         print("\n🔧 Последние изменения:")
+        print("• Исправлен часовой пояс (Москва)")
         print("• Исправлено определение времени (сегодня/завтра)")
         print("• Добавлено красивое приветствие")
-        print("• Улучшена обработка дат")
         print("=" * 60 + "\n")
 
     def init_vk_session(self):
@@ -105,11 +109,12 @@ class ReminderBot:
             print(f"❌ Ошибка сохранения обращений: {e}")
 
     def add_feedback(self, user_id, message):
+        now = self.get_now()
         feedback = {
             "id": len(self.feedbacks) + 1,
             "user_id": user_id,
             "message": message,
-            "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "created_at": now.strftime("%Y-%m-%d %H:%M:%S"),
             "status": "new"
         }
         self.feedbacks.append(feedback)
@@ -122,7 +127,7 @@ class ReminderBot:
             message = f"📨 НОВОЕ ОБРАЩЕНИЕ!\n\n"
             message += f"🆔 ID: {feedback['id']}\n"
             message += f"👤 User ID: {feedback['user_id']}\n"
-            message += f"📅 Дата и время: {feedback['created_at']}\n"
+            message += f"📅 Дата и время (МСК): {feedback['created_at']}\n"
             message += f"📝 Сообщение:\n{feedback['message']}\n\n"
             message += f"📊 Статус: {feedback['status']}"
 
@@ -169,7 +174,7 @@ class ReminderBot:
             'сентября': 9, 'октября': 10, 'ноября': 11, 'декабря': 12
         }
 
-        now = datetime.now()
+        now = self.get_now()
 
         if match:
             day = int(match.group(1))
@@ -185,7 +190,7 @@ class ReminderBot:
                 year += 1
 
             try:
-                return datetime(year, month, day, hour, minute)
+                return TIMEZONE.localize(datetime(year, month, day, hour, minute))
             except:
                 return None
 
@@ -222,7 +227,7 @@ class ReminderBot:
             "date": target_datetime.strftime("%d.%m.%Y"),
             "time": target_datetime.strftime("%H:%M"),
             "text": text,
-            "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            "created_at": self.get_now().strftime("%Y-%m-%d %H:%M:%S")
         }
 
         self.reminders[user_id_str].append(reminder)
@@ -246,8 +251,8 @@ class ReminderBot:
         print("🔄 Запущен поток проверки напоминаний...")
         while self.running:
             try:
-                current_datetime = datetime.now()
-                current_datetime_str = current_datetime.strftime("%Y-%m-%d %H:%M")
+                current = self.get_now()
+                current_datetime_str = current.strftime("%Y-%m-%d %H:%M")
 
                 for user_id_str, user_reminders in self.reminders.items():
                     for reminder in user_reminders[:]:
@@ -292,6 +297,7 @@ class ReminderBot:
         self.check_thread.start()
 
         print("✅ Бот готов к работе! Ожидание сообщений...")
+        print(f"📍 Текущее время (МСК): {self.get_now().strftime('%d.%m.%Y %H:%M:%S')}")
 
         while self.running:
             try:
@@ -393,7 +399,7 @@ class ReminderBot:
                                 self.send_message(user_id,
                                                   f"✅ Ваше обращение принято!\n\n"
                                                   f"🆔 Номер: #{feedback['id']}\n"
-                                                  f"📅 {feedback['created_at']}\n\n"
+                                                  f"📅 {feedback['created_at']} (МСК)\n\n"
                                                   f"Спасибо! Мы рассмотрим его в ближайшее время.",
                                                   self.get_main_keyboard())
                                 del self.user_states[user_id]
@@ -417,7 +423,7 @@ class ReminderBot:
                             thanks = ["🤗 Пожалуйста! Всегда рад помочь!", "😊 Обращайся!", "👍 Рад помочь!"]
                             self.send_message(user_id, random.choice(thanks), self.get_main_keyboard())
 
-                        # Приветствие (КРАСИВОЕ И ИНФОРМАТИВНОЕ)
+                        # Приветствие
                         elif any(word in text.lower() for word in
                                  ["привет", "начать", "старт", "здравствуй", "добрый день"]):
                             self.send_message(user_id,
@@ -432,7 +438,7 @@ class ReminderBot:
                                               "• `19:00` — сегодня в 19:00\n"
                                               "• `завтра в 10:00` — завтра в 10 утра\n"
                                               "• `3 мая в 19:00` — 3 мая в 19:00\n\n"
-                                              "⏰ **Важно:** Если время уже прошло сегодня, я напомню завтра!\n\n"
+                                              "⏰ **Важно:** Все даты и время в **Московском времени (МСК)**\n\n"
                                               "🔹 **Чтобы начать, нажмите:**\n"
                                               "   ➕ Новое напоминание\n\n"
                                               "🔹 **Другие кнопки:**\n"
